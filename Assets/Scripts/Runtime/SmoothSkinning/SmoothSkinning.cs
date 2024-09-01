@@ -1,4 +1,3 @@
-using System.Linq;
 using UnityEngine;
 
 [RequireComponent(typeof(MeshFilter))]
@@ -18,34 +17,23 @@ public class SmoothSkinning : MonoBehaviour
         }
     }
 
-    MeshRenderer m_MeshRenderer;
-    MeshRenderer MeshRenderer
-    {
-        get
-        {
-            if (m_MeshRenderer == null)
-                m_MeshRenderer = GetComponent<MeshRenderer>();
-
-            return m_MeshRenderer;
-        }
-    }
-
-
     public float boneLength = 1;
     public float boneHeight = 1;
     public float boneWidth = 1;
 
     public Transform bone0;
+    Matrix4x4 trs_bone0_to_root_bind;
     public Transform bone1;
+    Matrix4x4 trs_bone1_to_root_bind;
 
+    Vector3[] m_Verticies;
     Vector2[] m_Weights;
-    Vector3[] m_VerticesUnderBone0;
-    Vector3[] m_VerticesUnderBone1;
+    int[] m_Triangles;
 
-    void ApplyBindPoseAndFillVerticesUnderBones()
+    void SetUp()
     {
         //模型坐标系下
-        Vector3[] verticies =
+        Vector3[] theVerticies =
         {
             new Vector3(-boneLength, -boneHeight / 2, -boneWidth / 2),
             new Vector3(-boneLength, boneHeight / 2, -boneWidth / 2),
@@ -63,77 +51,12 @@ public class SmoothSkinning : MonoBehaviour
             new Vector3(boneLength, -boneHeight / 2, boneWidth / 2),
         };
 
-        bone0.parent = transform;
-        bone0.transform.localPosition = new Vector3(-boneLength, 0, 0);
-        bone0.transform.localRotation = Quaternion.identity;
-        bone0.transform.localScale = Vector3.one;
-
-        bone1.parent = transform;
-        bone1.transform.localPosition = new Vector3(0, 0, 0);
-        bone1.transform.localRotation = Quaternion.identity;
-        bone1.transform.localScale = Vector3.one;
-
-        m_VerticesUnderBone0 = new Vector3[verticies.Length];
-        m_VerticesUnderBone1 = new Vector3[verticies.Length];
-        for (int i = 0; i < verticies.Length; i++)
-        {
-            m_VerticesUnderBone0[i] = bone0.InverseTransformPoint(transform.TransformPoint(verticies[i]));
-            m_VerticesUnderBone1[i] = bone1.InverseTransformPoint(transform.TransformPoint(verticies[i]));
-        }
-
-        Vector2[] weights =
-        {
-            new Vector2(1, 0),
-            new Vector2(1, 0),
-            new Vector2(1, 0),
-            new Vector2(1, 0),
-
-            new Vector2(0.5f, 0.5f),
-            new Vector2(0.5f, 0.5f),
-            new Vector2(0.5f, 0.5f),
-            new Vector2(0.5f, 0.5f),
-
-            new Vector2( 0,1),
-            new Vector2( 0,1),
-            new Vector2( 0, 1),
-            new Vector2( 0, 1),
-        };
-        m_Weights = weights;
-    }
-
-    // Start is called once before the first execution of Update after the MonoBehaviour is created
-    void Start()
-    {
-        ApplyBindPoseAndFillVerticesUnderBones();
-
-    }
-
-    // Update is called once per frame
-    void Update()
-    {
-        Vector3[] v_bone0 = new Vector3[m_VerticesUnderBone0.Length];
-        for (int i = 0; i < m_VerticesUnderBone0.Length; i++)
-        {
-            v_bone0[i] = transform.InverseTransformPoint(bone0.TransformPoint(m_VerticesUnderBone0[i]));
-        }
-
-        Vector3[] v_bone1 = new Vector3[m_VerticesUnderBone1.Length];
-        for (int i = 0; i < m_VerticesUnderBone1.Length; i++)
-        {
-            v_bone1[i] = transform.InverseTransformPoint(bone1.TransformPoint(m_VerticesUnderBone1[i]));
-        }
-
-
-        Vector3[] vetices = new Vector3[m_VerticesUnderBone0.Length];
-        for (int i = 0; i < vetices.Length; i++)
-        {
-            vetices[i] = Vector3.Lerp(v_bone0[i], v_bone1[i], m_Weights[i].x);
-        }
-
-        MeshFilter.mesh.vertices = vetices;
+        Mesh mesh = new Mesh();
+        mesh.vertices = theVerticies;
+        MeshFilter.mesh = mesh;
 
         //看向三角形时，顺时针
-        int[] triangles =
+        int[] theTriangles =
         {
              0,3,1,
              3,2,1,
@@ -165,7 +88,7 @@ public class SmoothSkinning : MonoBehaviour
              11,9,10,
              11,8,9
         };
-        MeshFilter.mesh.triangles = triangles;
+        MeshFilter.mesh.triangles = theTriangles;
 
         //Vector3[] normals =
         //{
@@ -184,5 +107,63 @@ public class SmoothSkinning : MonoBehaviour
         //    new Vector3(1, 1, 1).normalized,
         //    new Vector3(1, -1, 1).normalized
         //};
+
+        bone0.parent = transform;
+        bone0.transform.localPosition = new Vector3(-boneLength, 0, 0);
+        bone0.transform.localRotation = Quaternion.identity;
+        bone0.transform.localScale = Vector3.one;
+        trs_bone0_to_root_bind = TRS(bone0);
+
+        bone1.parent = transform;
+        bone1.transform.localPosition = new Vector3(0, 0, 0);
+        bone1.transform.localRotation = Quaternion.identity;
+        bone1.transform.localScale = Vector3.one;
+        trs_bone1_to_root_bind = TRS(bone1);
+
+        m_Verticies = theVerticies;
+        m_Triangles = theTriangles;
+
+        m_Weights = new Vector2[12];
+        m_Weights[0] = new Vector2(1, 0);
+        m_Weights[1] = new Vector2(1, 0);
+        m_Weights[2] = new Vector2(1, 0);
+        m_Weights[3] = new Vector2(1, 0);
+        m_Weights[4] = new Vector2(0.5f, 0.5f);
+        m_Weights[5] = new Vector2(0.5f, 0.5f);
+        m_Weights[6] = new Vector2(0.5f, 0.5f);
+        m_Weights[7] = new Vector2(0.5f, 0.5f);
+        m_Weights[8] = new Vector2(0, 1);
+        m_Weights[9] = new Vector2(0, 1);
+        m_Weights[10] = new Vector2(0, 1);
+        m_Weights[11] = new Vector2(0, 1);
+    }
+
+    Matrix4x4 TRS(Transform trans)
+    {
+        return Matrix4x4.Translate(trans.localPosition) * Matrix4x4.Rotate(trans.localRotation) * Matrix4x4.Scale(trans.localScale);
+    }
+
+    // Start is called once before the first execution of Update after the MonoBehaviour is created
+    void Start()
+    {
+        SetUp();
+    }
+
+    // Update is called once per frame
+    void Update()
+    {
+        Vector3[] results = new Vector3[m_Verticies.Length];
+        for (int i = 0; i < m_Verticies.Length; i++)
+        {
+            var lv_0 = trs_bone0_to_root_bind.inverse * (new Vector4(m_Verticies[i].x, m_Verticies[i].y, m_Verticies[i].z, 1));
+            var v_0 = TRS(bone0) * lv_0;
+
+            var lv_1 = trs_bone1_to_root_bind.inverse * (new Vector4(m_Verticies[i].x, m_Verticies[i].y, m_Verticies[i].z, 1));
+            var v_1 = TRS(bone1) * lv_1;
+
+            results[i] = Vector3.Lerp(v_0, v_1, m_Weights[i].y);
+        }
+
+        MeshFilter.mesh.vertices = results;
     }
 }
